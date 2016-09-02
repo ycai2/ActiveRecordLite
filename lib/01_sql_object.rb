@@ -33,22 +33,42 @@ class SQLObject
   end
 
   def self.all
-    # ...
+    data = DBConnection.execute2(<<-SQL).drop(1)
+      SELECT
+        *
+      FROM
+        #{self.table_name}
+    SQL
+    parse_all(data)
   end
 
   def self.parse_all(results)
-    # ...
+    objects = []
+    results.each do |row|
+      objects << new(row)
+    end
+    objects
   end
 
   def self.find(id)
-    # ...
+    obj = DBConnection.execute2(<<-SQL, id).drop(1)
+      SELECT
+        *
+      FROM
+        #{self.table_name}
+      WHERE
+        id = ?
+    SQL
+    parse_all(obj).first
   end
 
   def initialize(params = {})
     params.each do |attr_name, val|
-      unless columns.include?(attr_name.to_sym)
+      unless self.class.columns.include?(attr_name.to_sym)
         raise "unknown attribute '#{attr_name}'"
       end
+      send("#{attr_name}=", val)
+
     end
   end
 
@@ -57,18 +77,45 @@ class SQLObject
   end
 
   def attribute_values
-    # ...
+    @attributes.values
   end
 
   def insert
-    # ...
+    cols = self.class.columns.drop(1)
+    col_names = cols.join(", ")
+    question_marks = (["?"] * cols.count).join(", ")
+
+    DBConnection.execute(<<-SQL, *attribute_values)
+      INSERT INTO
+        #{self.class.table_name} (#{col_names})
+      VALUES
+        (#{question_marks})
+    SQL
+
+    attributes[:id] = DBConnection.last_insert_row_id
   end
 
   def update
-    # ...
+    cols = self.class.columns.drop(1)
+
+    set_clause = cols.map { |name| name.to_s << " = ?" }.join(", ")
+    attrs = attribute_values.drop(1)
+
+    DBConnection.execute(<<-SQL, *attrs, self.id)
+      UPDATE
+        #{self.class.table_name}
+      SET
+        #{set_clause}
+      WHERE
+        id = ?
+    SQL
   end
 
   def save
-    # ...
+    if attributes.include?(:id)
+      update
+    else
+      insert
+    end
   end
 end
